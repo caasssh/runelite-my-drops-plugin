@@ -21,12 +21,13 @@ final class ReloadedDrops
     private final Map<Key, Candidate> replayed = new HashMap<>();
     private final Set<Key> ambiguous = new HashSet<>();
     private int world = -1;
+    private int nextExpiry = Integer.MAX_VALUE;
     private boolean replaying;
 
     void loading(Map<TileItem, Tile> confirmed, int currentWorld, int tick)
     {
         if (world != currentWorld) { clear(); world = currentWorld; }
-        prune(tick);
+        expire(tick);
         Set<Key> seen = new HashSet<>();
         for (Map.Entry<TileItem, Tile> entry : confirmed.entrySet())
         {
@@ -36,7 +37,11 @@ final class ReloadedDrops
             {
                 if (saved.containsKey(key)) { saved.put(key, false); }
             }
-            else if (saved.size() < DropTracker.MAX_TRACKED) { saved.putIfAbsent(key, true); }
+            else if (saved.size() < DropTracker.MAX_TRACKED)
+            {
+                saved.putIfAbsent(key, true);
+                nextExpiry = Math.min(nextExpiry, key.despawn);
+            }
         }
         replayed.clear();
         ambiguous.clear();
@@ -58,7 +63,7 @@ final class ReloadedDrops
     List<Candidate> finish(int currentWorld, int tick)
     {
         if (!replaying) { return Collections.emptyList(); }
-        prune(tick);
+        expire(tick);
         List<Candidate> matches = new ArrayList<>();
         if (world == currentWorld)
         {
@@ -109,12 +114,19 @@ final class ReloadedDrops
 
     void clear()
     {
-        saved.clear(); replayed.clear(); ambiguous.clear(); replaying = false; world = -1;
+        saved.clear(); replayed.clear(); ambiguous.clear(); replaying = false;
+        world = -1; nextExpiry = Integer.MAX_VALUE;
     }
 
     int savedCount() { return saved.size(); }
 
-    private void prune(int tick) { saved.keySet().removeIf(key -> key.despawn <= tick); }
+    void expire(int tick)
+    {
+        if (tick < nextExpiry) { return; }
+        saved.keySet().removeIf(key -> key.despawn <= tick);
+        nextExpiry = Integer.MAX_VALUE;
+        for (Key key : saved.keySet()) { nextExpiry = Math.min(nextExpiry, key.despawn); }
+    }
 
     static final class Candidate
     {

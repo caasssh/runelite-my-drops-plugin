@@ -107,6 +107,15 @@ public class ReloadedDropsTest
         reload.spawned(item(), tile, 330, 20); assertTrue(reload.finish(330, 20).isEmpty());
     }
 
+    @Test public void savedFingerprintExpiresWithoutAnotherLoadingLine()
+    {
+        reload.loading(confirmed, 330, 20);
+        assertEquals(1, reload.savedCount());
+        reload.finish(330, 20);
+        reload.expire(199); assertEquals(1, reload.savedCount());
+        reload.expire(200); assertEquals(0, reload.savedCount());
+    }
+
     @Test public void hoppingOrExplicitClearRejectsOldReplay()
     {
         reload.loading(confirmed, 330, 20);

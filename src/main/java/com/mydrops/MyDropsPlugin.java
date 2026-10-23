@@ -110,16 +110,18 @@ public class MyDropsPlugin extends Plugin
 
     @Subscribe public void onGameTick(GameTick event)
     {
+        int tick = client.getTickCount();
+        reload.expire(tick);
         ItemContainer inventory = client.getItemContainer(InventoryID.INV);
         if (inventory == null) { return; }
         if (client.getGameState() == GameState.LOGGED_IN)
         {
-            for (ReloadedDrops.Candidate candidate : reload.finish(client.getWorld(), client.getTickCount()))
+            for (ReloadedDrops.Candidate candidate : reload.finish(client.getWorld(), tick))
             {
                 tracker.restore(candidate.item, candidate.tile);
             }
         }
-        tracker.confirm(client.getTickCount(), inventory::count);
+        tracker.confirm(tick, inventory::count);
         for (TileItem item : tracker.tracked().keySet())
         {
             cacheLabel(item);
