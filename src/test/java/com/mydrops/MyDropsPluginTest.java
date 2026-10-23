@@ -28,6 +28,7 @@ public class MyDropsPluginTest
         Player player = mock(Player.class); WorldView view = mock(WorldView.class); WorldPoint point = new WorldPoint(3200, 3200, 0);
         when(plugin.client.getLocalPlayer()).thenReturn(player); when(player.getWorldView()).thenReturn(view); when(player.getWorldLocation()).thenReturn(point);
         when(plugin.client.getTickCount()).thenReturn(1);
+        when(plugin.client.getGameState()).thenReturn(GameState.LOGGED_IN);
         inventory = mock(ItemContainer.class); when(plugin.client.getItemContainer(InventoryID.INV)).thenReturn(inventory);
         when(inventory.count(100)).thenReturn(5); when(inventory.getItem(0)).thenReturn(new Item(100, 1));
         MenuEntry entry = mock(MenuEntry.class); when(entry.isItemOp()).thenReturn(true); when(entry.getOption()).thenReturn("Drop");
@@ -54,6 +55,38 @@ public class MyDropsPluginTest
     @Test public void rejectsNonDropAction() { when(click.getMenuEntry().getOption()).thenReturn("Eat"); drop(); assertTrue(plugin.labels.isEmpty()); }
     @Test public void pickupClearsLabelAndTracking() { drop(); plugin.onItemDespawned(new ItemDespawned(tile, item)); assertTrue(plugin.labels.isEmpty()); assertTrue(plugin.tracker.tracked().isEmpty()); }
     @Test public void sceneLoadingClearsEverything() { drop(); GameStateChanged state = new GameStateChanged(); state.setGameState(GameState.LOADING); plugin.onGameStateChanged(state); assertTrue(plugin.labels.isEmpty()); assertTrue(plugin.tracker.tracked().isEmpty()); }
+    @Test public void confirmedDropCanRebindAfterSceneLoading()
+    {
+        when(item.getVisibleTime()).thenReturn(1); when(item.getDespawnTime()).thenReturn(200);
+        drop(); GameStateChanged loading = new GameStateChanged(); loading.setGameState(GameState.LOADING);
+        plugin.onGameStateChanged(loading);
+        TileItem replayed = mock(TileItem.class);
+        when(replayed.getId()).thenReturn(100); when(replayed.getOwnership()).thenReturn(TileItem.OWNERSHIP_SELF);
+        when(replayed.getQuantity()).thenReturn(1); when(replayed.getVisibleTime()).thenReturn(1);
+        when(replayed.getDespawnTime()).thenReturn(200);
+        plugin.onItemSpawned(new ItemSpawned(tile, replayed));
+        plugin.onGameTick(new GameTick());
+        assertTrue(plugin.tracker.tracked().containsKey(replayed));
+        assertFalse(plugin.tracker.tracked().containsKey(item));
+        assertEquals("Shark", plugin.labels.get(replayed).text);
+    }
+    @Test public void newDropAfterRepeatedLoadingStillHighlights()
+    {
+        GameStateChanged loading = new GameStateChanged(); loading.setGameState(GameState.LOADING);
+        GameStateChanged loggedIn = new GameStateChanged(); loggedIn.setGameState(GameState.LOGGED_IN);
+        for (int i = 0; i < 2; i++)
+        {
+            plugin.onGameStateChanged(loading); plugin.onGameStateChanged(loggedIn);
+            when(inventory.count(100)).thenReturn(5);
+            when(plugin.client.getTickCount()).thenReturn(i + 2);
+            TileItem freshItem = mock(TileItem.class);
+            when(freshItem.getId()).thenReturn(100); when(freshItem.getOwnership()).thenReturn(TileItem.OWNERSHIP_SELF);
+            when(freshItem.getQuantity()).thenReturn(1);
+            plugin.onMenuOptionClicked(click); plugin.onItemSpawned(new ItemSpawned(tile, freshItem));
+            when(inventory.count(100)).thenReturn(4); plugin.onGameTick(new GameTick());
+            assertTrue(plugin.tracker.tracked().containsKey(freshItem));
+        }
+    }
     @Test public void shutdownClearsEverything() { drop(); plugin.shutDown(); assertTrue(plugin.labels.isEmpty()); assertTrue(plugin.tracker.tracked().isEmpty()); }
     @Test public void notedResourceUsesUnnotedCategory()
     {

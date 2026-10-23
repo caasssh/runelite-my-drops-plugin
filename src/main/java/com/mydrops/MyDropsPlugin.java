@@ -29,6 +29,7 @@ public class MyDropsPlugin extends Plugin
     @Inject MyDropsOverlay overlay;
 
     final DropTracker tracker = new DropTracker();
+    final ReloadedDrops reload = new ReloadedDrops();
     final ResourceFilter filter = new ResourceFilter();
     final Map<TileItem, Label> labels = new IdentityHashMap<>();
     final Map<TileItem, Tile> groupItems = new LinkedHashMap<>();
@@ -68,10 +69,15 @@ public class MyDropsPlugin extends Plugin
         tracker.intent(slot.getId(), inventory.count(slot.getId()), slot.getQuantity(), client.getTickCount(), player.getWorldView(), player.getWorldLocation());
     }
 
-    @Subscribe public void onItemSpawned(ItemSpawned event) { ground(event.getItem(), event.getTile(), event.getItem().getQuantity()); }
+    @Subscribe public void onItemSpawned(ItemSpawned event)
+    {
+        ground(event.getItem(), event.getTile(), event.getItem().getQuantity());
+        reload.spawned(event.getItem(), event.getTile(), client.getWorld(), client.getTickCount());
+    }
 
     @Subscribe public void onItemQuantityChanged(ItemQuantityChanged event)
     {
+        reload.quantityChanged(event.getItem(), event.getTile(), event.getOldQuantity(), client.getWorld(), client.getTickCount());
         ground(event.getItem(), event.getTile(), event.getNewQuantity() - event.getOldQuantity());
         Label label = labels.get(event.getItem());
         if (label != null) { label.quantity(event.getNewQuantity()); }
@@ -96,6 +102,7 @@ public class MyDropsPlugin extends Plugin
 
     @Subscribe public void onItemDespawned(ItemDespawned event)
     {
+        reload.despawned(event.getItem(), event.getTile(), client.getWorld(), client.getTickCount());
         tracker.remove(event.getItem());
         groupItems.remove(event.getItem());
         labels.remove(event.getItem());
@@ -104,7 +111,14 @@ public class MyDropsPlugin extends Plugin
     @Subscribe public void onGameTick(GameTick event)
     {
         ItemContainer inventory = client.getItemContainer(InventoryID.INV);
-        if (inventory == null) { reset(); return; }
+        if (inventory == null) { return; }
+        if (client.getGameState() == GameState.LOGGED_IN)
+        {
+            for (ReloadedDrops.Candidate candidate : reload.finish(client.getWorld(), client.getTickCount()))
+            {
+                tracker.restore(candidate.item, candidate.tile);
+            }
+        }
         tracker.confirm(client.getTickCount(), inventory::count);
         for (TileItem item : tracker.tracked().keySet())
         {
@@ -124,17 +138,24 @@ public class MyDropsPlugin extends Plugin
 
     @Subscribe public void onGameStateChanged(GameStateChanged event)
     {
-        if (event.getGameState() != GameState.LOGGED_IN) { reset(); }
+        if (event.getGameState() == GameState.LOADING)
+        {
+            reload.loading(tracker.tracked(), client.getWorld(), client.getTickCount());
+            clearMarks();
+        }
+        else if (event.getGameState() != GameState.LOGGED_IN) { reset(); }
     }
 
     @Subscribe public void onWorldViewUnloaded(WorldViewUnloaded event)
     {
         tracker.unload(event.getWorldView());
+        reload.unloaded(event.getWorldView());
         groupItems.values().removeIf(tile -> tile.getItemLayer() == null || tile.getItemLayer().getWorldView() == event.getWorldView());
         labels.keySet().removeIf(item -> !tracker.tracked().containsKey(item) && !groupItems.containsKey(item));
     }
 
-    private void reset() { tracker.clear(); groupItems.clear(); labels.clear(); }
+    private void clearMarks() { tracker.clear(); groupItems.clear(); labels.clear(); }
+    private void reset() { clearMarks(); reload.clear(); }
 
     static final class Label
     {

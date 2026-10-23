@@ -13,6 +13,6 @@ For group ironmen, enable **Highlight GIM group items** and choose a separate **
 
 ![My Drops settings in RuneLite, configured for food and potions with a red item outline](docs/settings.png)
 
-Optional names can overlap labels from RuneLite's Ground Items plugin; leave names off here if you prefer its labels. Drop matching is conservative, and reloading a scene clears marks until new item events occur. GIM behavior still needs live verification.
+Optional names can overlap labels from RuneLite's Ground Items plugin; leave names off here if you prefer its labels. Drop matching is conservative. Across loading lines, a confirmed drop is highlighted again only if its location and item lifetime still match exactly. GIM behavior still needs live verification.
 
 [Development and testing](docs/development.md)

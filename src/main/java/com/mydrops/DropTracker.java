@@ -79,6 +79,10 @@ final class DropTracker
     }
 
     Map<TileItem, Tile> tracked() { return tracked; }
+    void restore(TileItem item, Tile tile)
+    {
+        if (tracked.size() < MAX_TRACKED) { tracked.put(item, tile); }
+    }
     void cancel(int id) { pending.remove(id); }
 
     void remove(TileItem item)
