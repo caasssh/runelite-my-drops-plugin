@@ -10,7 +10,7 @@ public interface MyDropsConfig extends Config
 
     @ConfigSection(name = "Item filter", description = "Which own drops and optional GIM group items to mark", position = 0)
     String FILTER = "filter";
-    @ConfigSection(name = "Appearance", description = "Colors include an opacity slider", position = 1)
+    @ConfigSection(name = "Appearance", description = "Ground marks and menu name colors", position = 1)
     String APPEARANCE = "appearance";
 
     @ConfigItem(keyName = "resourcesOnly", name = "Resources only", description = "Apply the categories and extra items below to own drops and enabled GIM group items. Off: include all item types.", section = FILTER, position = 0)
@@ -66,4 +66,10 @@ public interface MyDropsConfig extends Config
     @Alpha
     @ConfigItem(keyName = "backgroundColor", name = "Text background", description = "Label background color and opacity; zero opacity hides the background", section = APPEARANCE, position = 7)
     default Color backgroundColor() { return new Color(0, 0, 0, 150); }
+
+    @ConfigItem(keyName = "menuNames", name = "Recolor menu names", description = "Color confirmed own-drop names in right-click ground-item menus. Resource filters apply; GIM-only items are excluded.", section = APPEARANCE, position = 8)
+    default boolean menuNames() { return false; }
+
+    @ConfigItem(keyName = "menuNameColor", name = "Menu name color", description = "Right-click item-name color; independent of the on-ground text color", section = APPEARANCE, position = 9)
+    default Color menuNameColor() { return Color.CYAN; }
 }

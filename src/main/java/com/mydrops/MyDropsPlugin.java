@@ -1,10 +1,13 @@
 package com.mydrops;
 
 import com.google.inject.Provides;
+import java.awt.Color;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Pattern;
 import javax.inject.Inject;
 import net.runelite.api.*;
 import net.runelite.api.events.*;
@@ -17,11 +20,13 @@ import net.runelite.client.game.ItemManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.overlay.OverlayManager;
+import net.runelite.client.util.ColorUtil;
 import net.runelite.client.util.Text;
 
 @PluginDescriptor(name = "My Drops", description = "Color your deliberate drops and optional GIM group items", tags = {"ground", "supplies", "food", "potions", "ammunition", "gim"})
 public class MyDropsPlugin extends Plugin
 {
+    private static final Pattern COLOR_TAG = Pattern.compile("(?i)</?col(?:=[^>]*)?>");
     @Inject Client client;
     @Inject ItemManager itemManager;
     @Inject MyDropsConfig config;
@@ -69,6 +74,58 @@ public class MyDropsPlugin extends Plugin
         tracker.intent(slot.getId(), inventory.count(slot.getId()), slot.getQuantity(), client.getTickCount(), player.getWorldView(), player.getWorldLocation());
     }
 
+    @Subscribe public void onMenuOpened(MenuOpened event)
+    {
+        if (!config.menuNames() || event.getMenuEntries() == null) { return; }
+        Color color = config.menuNameColor();
+        if (color == null || color.getAlpha() == 0) { return; }
+        int mask = (config.food() ? ResourceFilter.FOOD : 0) | (config.potions() ? ResourceFilter.POTIONS : 0)
+            | (config.ammunition() ? ResourceFilter.AMMO : 0) | (config.runes() ? ResourceFilter.RUNES : 0);
+        for (MenuEntry menu : event.getMenuEntries())
+        {
+            if (menu == null || !isGroundItemMenu(menu.getType()) || menu.getTarget() == null) { continue; }
+            for (Map.Entry<TileItem, Tile> tracked : tracker.tracked().entrySet())
+            {
+                TileItem item = tracked.getKey();
+                if (item.getId() != menu.getIdentifier()) { continue; }
+                Tile tile = tracked.getValue();
+                ItemLayer layer = tile.getItemLayer();
+                Point scene = tile.getSceneLocation();
+                if (layer == null || layer.getWorldView() == null || scene == null
+                    || layer.getWorldView().getId() != menu.getWorldViewId()
+                    || client.getWorldView(menu.getWorldViewId()) != layer.getWorldView()
+                    || layer.getWorldView().getPlane() != tile.getPlane()
+                    || scene.getX() != menu.getParam0() || scene.getY() != menu.getParam1()) { continue; }
+                List<TileItem> ground = tile.getGroundItems();
+                if (ground == null) { continue; }
+                int sameId = 0;
+                boolean stillGround = false;
+                for (TileItem stack : ground)
+                {
+                    if (stack.getId() == item.getId())
+                    {
+                        sameId++;
+                        stillGround |= stack == item;
+                    }
+                }
+                Label label = labels.get(item);
+                if (sameId == 1 && stillGround && label != null
+                    && filter.matches(label.filterName, label.categories, config.resourcesOnly(), mask))
+                {
+                    menu.setTarget(ColorUtil.prependColorTag(COLOR_TAG.matcher(menu.getTarget()).replaceAll(""), color));
+                    break;
+                }
+            }
+        }
+    }
+
+    private static boolean isGroundItemMenu(MenuAction action)
+    {
+        return action == MenuAction.GROUND_ITEM_FIRST_OPTION || action == MenuAction.GROUND_ITEM_SECOND_OPTION
+            || action == MenuAction.GROUND_ITEM_THIRD_OPTION || action == MenuAction.GROUND_ITEM_FOURTH_OPTION
+            || action == MenuAction.GROUND_ITEM_FIFTH_OPTION || action == MenuAction.EXAMINE_ITEM_GROUND;
+    }
+
     @Subscribe public void onItemSpawned(ItemSpawned event)
     {
         ground(event.getItem(), event.getTile(), event.getItem().getQuantity());
@@ -102,7 +159,14 @@ public class MyDropsPlugin extends Plugin
 
     @Subscribe public void onItemDespawned(ItemDespawned event)
     {
-        reload.despawned(event.getItem(), event.getTile(), client.getWorld(), client.getTickCount());
+        boolean confirmed = tracker.tracked().containsKey(event.getItem());
+        ItemLayer layer = event.getTile().getItemLayer();
+        ItemContainer inventory = client.getItemContainer(InventoryID.INV);
+        boolean activeView = layer != null && layer.getWorldView() != null
+            && client.getWorldView(layer.getWorldView().getId()) == layer.getWorldView();
+        reload.despawned(event.getItem(), event.getTile(), client.getWorld(), client.getTickCount(),
+            confirmed, client.getGameState() == GameState.LOGGED_IN, activeView,
+            inventory == null ? Integer.MIN_VALUE : inventory.count(event.getItem().getId()));
         tracker.remove(event.getItem());
         groupItems.remove(event.getItem());
         labels.remove(event.getItem());
@@ -116,12 +180,18 @@ public class MyDropsPlugin extends Plugin
         if (inventory == null) { return; }
         if (client.getGameState() == GameState.LOGGED_IN)
         {
-            for (ReloadedDrops.Candidate candidate : reload.finish(client.getWorld(), tick))
+            for (ReloadedDrops.Candidate candidate : reload.finish(client.getWorld(), tick, inventory::count,
+                view -> client.getWorldView(view.getId()) == view))
             {
                 tracker.restore(candidate.item, candidate.tile);
             }
         }
         tracker.confirm(tick, inventory::count);
+        if (client.getGameState() == GameState.LOGGED_IN)
+        {
+            reload.remember(tracker.tracked(), client.getWorld(), tick,
+                view -> client.getWorldView(view.getId()) == view);
+        }
         for (TileItem item : tracker.tracked().keySet())
         {
             cacheLabel(item);
@@ -142,16 +212,33 @@ public class MyDropsPlugin extends Plugin
     {
         if (event.getGameState() == GameState.LOADING)
         {
-            reload.loading(tracker.tracked(), client.getWorld(), client.getTickCount());
+            ItemContainer inventory = client.getItemContainer(InventoryID.INV);
+            reload.loading(tracker.tracked(), client.getWorld(), client.getTickCount(),
+                inventory == null ? id -> Integer.MIN_VALUE : inventory::count);
             clearMarks();
         }
-        else if (event.getGameState() != GameState.LOGGED_IN) { reset(); }
+        else if (event.getGameState() != GameState.LOGGED_IN)
+        {
+            reset();
+        }
     }
 
     @Subscribe public void onWorldViewUnloaded(WorldViewUnloaded event)
     {
+        WorldView view = event.getWorldView();
+        boolean sceneReload = view.isTopLevel()
+            && (reload.isReplaying() || client.getGameState() == GameState.LOADING
+                || client.getGameState() == GameState.LOGGED_IN);
+        // A top-level view can unload while still LOGGED_IN, before or without
+        // a LOADING callback. Capture marks before the old references vanish.
+        if (sceneReload && !reload.isReplaying())
+        {
+            ItemContainer inventory = client.getItemContainer(InventoryID.INV);
+            reload.loading(tracker.tracked(), client.getWorld(), client.getTickCount(),
+                inventory == null ? id -> Integer.MIN_VALUE : inventory::count);
+        }
         tracker.unload(event.getWorldView());
-        reload.unloaded(event.getWorldView());
+        reload.unloaded(view, sceneReload);
         groupItems.values().removeIf(tile -> tile.getItemLayer() == null || tile.getItemLayer().getWorldView() == event.getWorldView());
         labels.keySet().removeIf(item -> !tracker.tracked().containsKey(item) && !groupItems.containsKey(item));
     }
