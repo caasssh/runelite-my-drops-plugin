@@ -1,6 +1,14 @@
 # My Drops - local first build
 
-22 October 2026 (America/Vancouver). Separate repository on `feature/initial-my-drops`. User reports the plugin works well after in-game testing and explicitly authorized public source publication and Plugin Hub submission. Native settings screenshot: `docs/settings.png`. Submission preparation is underway; upstream review is required before Plugin Hub availability.
+22 October 2026 (America/Vancouver). Published from `feature/initial-my-drops`. User reports the plugin works well after in-game testing and explicitly authorized public source publication and Plugin Hub submission. Native settings screenshot: `docs/settings.png`. Plugin Hub PR [19230](https://github.com/runelite/plugin-hub/pull/19230) is open with a passing automated build; upstream review is still required before availability.
+
+## Publication outcome
+
+- Public source: https://github.com/caasssh/runelite-my-drops-plugin . Tested implementation commit: `af0b6731e4ebff914d2183c763242cee28fbabdf`.
+- Plugin Hub manifest commit: `5515628f0f070d5f3766f1ab871fb3b13bd1499d` on `caasssh/plugin-hub:feature/add-my-drops`. Only `plugins/my-drops` changed, referencing that exact source commit. PR is open, ready for review, and mergeable; no upstream merge was performed.
+- RuneLite build workflow `39892600064`: **SUCCESS**, 34 seconds. Upload job skipped on the submission workflow; no published client availability is claimed.
+- Required announcement sent once through the existing CoX Assistant bot's deployed one-shot sender and read back from `#plugin-updates`: [message 1563024462251565146](https://discord.com/channels/1529352948520321104/1545129946110758983/1563024462251565146). Exact PR URL matched one message, bot identity verified, no mentions.
+- This documentation-only follow-up records the handoff. The Hub remains pinned to the tested implementation commit; no runtime code, build inputs or PR marker changed afterward.
 
 ## Initial release preparation
 
